@@ -45,7 +45,8 @@ def dataset_factory(settings):
     is_color = None  # used for kitti datasets
 
     type = settings['type']
-    name = settings['name']    
+    name = settings['name']
+    name_mask = settings['name_mask']
     
     path = settings['base_path'] 
     path = os.path.expanduser(path)
@@ -67,7 +68,7 @@ def dataset_factory(settings):
         fps = 10 # a default value 
         if 'fps' in settings:
             fps = int(settings['fps'])
-        dataset = FolderDataset(path, name, fps, associations, DatasetType.FOLDER)      
+        dataset = FolderDataset(path, name, name_mask, fps, associations, DatasetType.FOLDER)
     if type == 'live':
         dataset = LiveDataset(path, name, associations, DatasetType.LIVE)   
                 
@@ -75,9 +76,10 @@ def dataset_factory(settings):
 
 
 class Dataset(object):
-    def __init__(self, path, name, fps=None, associations=None, type=DatasetType.NONE):
+    def __init__(self, path, name, name_mask, fps=None, associations=None, type=DatasetType.NONE):
         self.path=path 
-        self.name=name 
+        self.name=name
+        self.name_mask=name_mask
         self.type=type    
         self.is_ok = True
         self.fps = fps   
@@ -179,10 +181,9 @@ class LiveDataset(Dataset):
         return image           
 
 
-
 class FolderDataset(Dataset): 
-    def __init__(self, path, name, fps=None, associations=None, type=DatasetType.VIDEO): 
-        super().__init__(path, name, fps, associations, type)  
+    def __init__(self, path, name, name_mask, fps=None, associations=None, type=DatasetType.VIDEO):
+        super().__init__(path, name, name_mask, fps, associations, type)
         if fps is None: 
             fps = 10 # default value  
         self.fps = fps 
@@ -195,6 +196,11 @@ class FolderDataset(Dataset):
         self.listing = glob.glob(path + '/' + self.name)
         self.listing.sort()
         self.listing = self.listing[::self.skip]
+
+        self.listing_mask = glob.glob(path.replace('bmp', 'mask') + '/' + self.name_mask)
+        self.listing_mask.sort()
+        self.listing_mask = self.listing_mask[::self.skip]
+
         #print('list of files: ', self.listing)
         self.maxlen = len(self.listing)
         self.i = 0        
@@ -207,13 +213,21 @@ class FolderDataset(Dataset):
             return (None, False)
         image_file = self.listing[self.i]
         img = cv2.imread(image_file)
+        try:
+            image_mask_file = self.listing_mask[self.i]
+            img_mask = cv2.imread(image_mask_file, cv2.IMREAD_GRAYSCALE)
+        except:
+            img_mask = None
         self._timestamp += self.Ts
         self._next_timestamp = self._timestamp + self.Ts         
         if img is None: 
-            raise IOError('error reading file: ', image_file)               
+            raise IOError('error reading file: ', image_file)
+        # if img_mask is None:
+        #     raise IOError('error reading file: ', image_mask_file)
         # Increment internal counter.
         self.i = self.i + 1
-        return img
+        return img, img_mask
+
 
 class FolderDatasetParallelStatus:
     def __init__(self, i, maxlen, listing, skip):
@@ -221,6 +235,7 @@ class FolderDatasetParallelStatus:
         self.maxlen = maxlen
         self.listing = listing 
         self.skip = skip  
+
 
 # this is experimental 
 class FolderDatasetParallel(Dataset): 

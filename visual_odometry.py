@@ -50,7 +50,9 @@ class VisualOdometry(object):
         self.stage = VoStage.NO_IMAGES_YET
         self.cam = cam
         self.cur_image = None   # current image
+        self.cur_mask = None   # current mask
         self.prev_image = None  # previous/reference image
+        self.prev_mask = None  # previous/reference mask
 
         self.kps_ref = None  # reference keypoints 
         self.des_ref = None # refeference descriptors 
@@ -75,6 +77,7 @@ class VisualOdometry(object):
         self.t0_gt = None            # history of ground truth translations (if available)
         self.traj3d_est = []         # history of estimated translations centered w.r.t. first one
         self.traj3d_gt = []          # history of estimated ground truth translations centered w.r.t. first one     
+        self.ts = []
 
         self.num_matched_kps = None    # current number of matched keypoints  
         self.num_inliers = None        # current number of inliers 
@@ -144,7 +147,7 @@ class VisualOdometry(object):
 
     def processFirstFrame(self):
         # only detect on the current image 
-        self.kps_ref, self.des_ref = self.feature_tracker.detectAndCompute(self.cur_image)
+        self.kps_ref, self.des_ref = self.feature_tracker.detectAndCompute(self.cur_image, self.cur_mask)
         # convert from list of keypoints to an array of points 
         self.kps_ref = np.array([x.pt for x in self.kps_ref], dtype=np.float32) 
         self.draw_img = self.drawFeatureTracks(self.cur_image)
@@ -156,7 +159,8 @@ class VisualOdometry(object):
         self.timer_feat.refresh()
         # estimate pose 
         self.timer_pose_est.start()
-        R, t = self.estimatePose(self.track_result.kps_ref_matched, self.track_result.kps_cur_matched)     
+        R, t = self.estimatePose(self.track_result.kps_ref_matched, self.track_result.kps_cur_matched)
+        self.ts.append(t)
         self.timer_pose_est.refresh()
         # update keypoints history  
         self.kps_ref = self.track_result.kps_ref
@@ -178,7 +182,7 @@ class VisualOdometry(object):
         self.draw_img = self.drawFeatureTracks(self.cur_image) 
         # check if we have enough features to track otherwise detect new ones and start tracking from them (used for LK tracker) 
         if (self.feature_tracker.tracker_type == FeatureTrackerTypes.LK) and (self.kps_ref.shape[0] < self.feature_tracker.num_features): 
-            self.kps_cur, self.des_cur = self.feature_tracker.detectAndCompute(self.cur_image)           
+            self.kps_cur, self.des_cur = self.feature_tracker.detectAndCompute(self.cur_image, self.cur_mask)
             self.kps_cur = np.array([x.pt for x in self.kps_cur], dtype=np.float32) # convert from list of keypoints to an array of points   
             if kVerbose:     
                 print('# new detected points: ', self.kps_cur.shape[0])                  
@@ -187,7 +191,7 @@ class VisualOdometry(object):
         self.updateHistory()           
         
 
-    def track(self, img, frame_id):
+    def track(self, img, mask, frame_id):
         if kVerbose:
             print('..................................')
             print('frame: ', frame_id) 
@@ -197,16 +201,17 @@ class VisualOdometry(object):
         # check coherence of image size with camera settings 
         assert(img.ndim==2 and img.shape[0]==self.cam.height and img.shape[1]==self.cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
         self.cur_image = img
+        self.cur_mask = mask
         # manage and check stage 
         if(self.stage == VoStage.GOT_FIRST_IMAGE):
             self.processFrame(frame_id)
         elif(self.stage == VoStage.NO_IMAGES_YET):
             self.processFirstFrame()
             self.stage = VoStage.GOT_FIRST_IMAGE            
-        self.prev_image = self.cur_image    
+        self.prev_image = self.cur_image
+        self.prev_mask = self.cur_mask
         # update main timer (for profiling)
-        self.timer_main.refresh()  
-  
+        self.timer_main.refresh()
 
     def drawFeatureTracks(self, img, reinit = False):
         draw_img = cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)

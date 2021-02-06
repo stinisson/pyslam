@@ -20,6 +20,7 @@
 import numpy as np
 import cv2
 import math
+import pickle
 
 from config import Config
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     traj_img_size = 800
     traj_img = np.zeros((traj_img_size, traj_img_size, 3), dtype=np.uint8)
     half_traj_img_size = int(0.5*traj_img_size)
-    draw_scale = 1
+    draw_scale = 0.3
 
     is_draw_3d = True
     if kUsePangolin:
@@ -100,11 +101,11 @@ if __name__ == "__main__":
     img_id = 0
     while dataset.isOk():
 
-        img = dataset.getImage(img_id)
+        img, mask = dataset.getImage(img_id)
 
-        if img is not None:
+        if img is not None and mask is not None:
 
-            vo.track(img, img_id)  # main VO function 
+            vo.track(img, mask, img_id)  # main VO function
 
             if(img_id > 2):	       # start drawing from the third image (when everything is initialized and flows in a normal way)
 
@@ -158,6 +159,9 @@ if __name__ == "__main__":
 
     #print('press a key in order to exit...')
     #cv2.waitKey(0)
+
+    with open('ts.pickle', 'wb') as f:
+        pickle.dump(vo.ts, f, pickle.HIGHEST_PROTOCOL)
 
     if is_draw_traj_img:
         print('saving map.png')

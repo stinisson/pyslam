@@ -39,7 +39,7 @@ def groundtruth_factory(settings):
     type=GroundTruthType.NONE
     associations = None 
 
-    type = settings['type']
+    # type = settings['type']
     path = settings['base_path']
     name = settings['name']
            
